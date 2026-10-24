@@ -1,68 +1,65 @@
 # 🌙 Show Me The Fate (사주팔자)
 
-> Next.js와 TypeScript로 제작된 현대적인 디자인의 사주 분석 웹 애플리케이션입니다.
-> 
-> **Live Demo:** [https://dark-aurora-one.vercel.app](https://dark-aurora-one.vercel.app)
+양력·음력 생년월일시를 절기 기준으로 계산하고, 사주 원국과 전통 명리 해석을 보여주는 Next.js 웹 앱입니다.
 
-![App Preview](https://github.com/user-attachments/assets/placeholder)
+> **Live Demo:** [dark-aurora-one.vercel.app](https://dark-aurora-one.vercel.app)
 
-## ✨ 주요 기능
+## 주요 기능
 
-이 앱은 사용자의 생년월일시를 기반으로 정통 명리학 이론을 적용하여 다양한 운세 분석을 제공합니다.
+- 분 단위 출생 시각과 절입 시각을 반영한 연주·월주·일주·시주 계산
+- 양력/음력 및 윤달 입력, 자시 관법 선택
+- 경도 기반 진태양시 보정 선택
+- 성별과 연간 음양에 따른 대운 순행/역행 및 절기 기반 대운수 계산
+- 십신, 공망, 띠, 오행 분포와 테마별 전통 해석
+- 브라우저 로컬 저장 및 이전 저장 형식 자동 마이그레이션
+- 반응형 UI와 키보드/스크린리더용 기본 접근성 속성
 
-### 1. 기본 분석
-- **사주팔자(四柱八字)**: 연월일시의 4기둥과 8글자 분석 및 오행(목화토금수) 분포 시각화
-- **일간(日干) 분석**: 타고난 성향과 기질 상세 해석
-- **십신(十神) 배치**: 육친론에 따른 심리 및 사회적 관계 구조 분석
+## 계산 기준과 한계
 
-### 2. 운세 및 상세 통변
-- **운세(Fortune)**:
-  - 오늘의 운세 (일진)
-  - 연운 (세운, 1년 운세)
-  - 대운 (10년 주기 운세 흐름)
-- **적성 및 테마 운세**:
-  - 💼 **직업/적성**: 오행과 십신 기반의 타고난 직업 적성 및 추천 직업군
-  - 🏥 **건강**: 오행의 과부족을 통한 취약 장기 분석 및 식단/운동 가이드
-  - 💰 **재물**: 재성(편재/정재) 분석을 통한 자산 관리 및 투자 조언
-  - 💕 **연애/결혼**: 이상형, 연애 스타일, 결혼 운세 및 조언
+- 핵심 원국 계산은 [`manseryeok`](https://github.com/yhj1024/manseryeok) 2.x를 사용합니다.
+- 기본 관법은 한국 표준시, 절기 기준, 야자시를 넘기지 않는 자정 일진 변경입니다.
+- 대운수는 인접 절기까지의 일수를 3으로 나눈 뒤 반올림하는 방식입니다.
+- 출생 시간을 모르면 정오로 계산하며, 결과에 시주 불확실성을 표시합니다.
+- 오행 분포는 천간과 지지의 대표 오행 8글자를 같은 비중으로 센 참고 지표입니다. 월령·지장간·조후를 포함한 종합 신강약 판정은 제공하지 않습니다.
+- 해석 문구와 점수는 전통 명리 개념을 바탕으로 한 재미·자기 성찰용 콘텐츠입니다. 의료·법률·재정·관계에 관한 중요한 결정의 근거로 사용하지 마세요.
 
-### 3. 부가 기능
-- **💑 궁합 보기**: 상대방 정보를 입력하여 두 사람의 오행 조화 및 궁합 점수 계산 (백분율)
-- **💾 저장 기능**: 분석한 사주 데이터를 브라우저(localStorage)에 저장하고 언제든 다시 불러오기
-- **🐲 띠(생초) 분석**: 동물 띠에 따른 성격 장단점 분석
+## 기술 스택
 
-## 🛠 기술 스택
+- Next.js 16.4 (App Router), React 19, TypeScript
+- Tailwind CSS 4
+- manseryeok 2
+- Vitest 5 + V8 coverage
+- GitHub Actions
 
-- **Framework**: [Next.js 15](https://nextjs.org/) (App Router)
-- **Language**: [TypeScript](https://www.typescriptlang.org/)
-- **Styling**: [Tailwind CSS](https://tailwindcss.com/)
-- **Design**: Glassmorphism UI, Dark Aurora Theme
-- **Deployment**: [Vercel](https://vercel.com/)
+## 로컬 실행
 
-## 🚀 설치 및 실행
-
-### 필수 요구사항
-- Node.js 18.0.0 이상
-- npm 또는 yarn
-
-### 개발 서버 실행
+요구 사항: Node.js 20.9 이상, npm
 
 ```bash
-# 저장소 클론
 git clone https://github.com/teriyakki-jin/show-me-the-fate.git
-
-# 이동
 cd show-me-the-fate
-
-# 의존성 설치
-npm install
-
-# 개발 서버 시작
+npm ci
 npm run dev
 ```
 
-브라우저에서 `http://localhost:3000` (또는 터미널에 표시된 포트)으로 접속하세요.
+브라우저에서 `http://localhost:3000`에 접속합니다.
 
-## 📝 라이선스
+## 검증
 
-This project is licensed under the MIT License.
+```bash
+npm run lint
+npm run typecheck
+npm test
+npm run coverage
+npm run build
+```
+
+핵심 계산·저장 모듈은 라인, 함수, 구문, 분기 커버리지 80%를 최소 기준으로 둡니다. CI는 모든 pull request와 `main` 브랜치 push에서 위 검증을 실행합니다.
+
+## 개인정보
+
+입력한 출생 정보와 저장한 사주는 서버로 전송하지 않고 현재 브라우저의 `localStorage`에만 보관합니다. 브라우저 데이터를 지우면 저장 내용도 삭제됩니다.
+
+## 라이선스
+
+[MIT License](./LICENSE)

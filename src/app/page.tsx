@@ -1,110 +1,149 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { calculateSaju, FIVE_ELEMENTS, TEN_GODS, ZODIAC_DETAILS, TenGodType, calculateCompatibility, CHEONGAN, JIJI } from '@/lib/saju';
+import { calculateSaju, FIVE_ELEMENTS, TEN_GODS, calculateCompatibility } from '@/lib/saju';
+import { parseSavedSajuList, serializeSavedSajuList } from '@/lib/saju/storage';
+import { DEFAULT_BIRTH_INPUT, type SavedSajuV2, type SajuBirthInput } from '@/lib/saju/types';
+import { ResultTabs, type ResultTabId } from '@/components/ResultTabs';
+import { SafetyNotice } from '@/components/SafetyNotice';
+import { SavedSajuList } from '@/components/SavedSajuList';
 
-// 저장된 사주 타입
-type SavedSaju = {
-  id: string;
-  name: string;
-  birthDate: string;
-  birthHour: string;
-  gender: '남' | '여';
-  savedAt: string;
-};
+const STORAGE_KEY = 'savedSajuList';
+
+function formatKoreanDate(date: string): string {
+  const [year, month, day] = date.split('-').map(Number);
+  return `${year}년 ${month}월 ${day}일`;
+}
+
+function formatDateInputValue(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
 
 export default function Home() {
-  const [birthDate, setBirthDate] = useState('');
-  const [birthHour, setBirthHour] = useState('12');
+  const [birthDate, setBirthDate] = useState(DEFAULT_BIRTH_INPUT.birthDate);
+  const [birthTime, setBirthTime] = useState(DEFAULT_BIRTH_INPUT.birthTime ?? '12:00');
+  const [timeUnknown, setTimeUnknown] = useState(false);
   const [gender, setGender] = useState<'남' | '여'>('남');
+  const [calendar, setCalendar] = useState<'solar' | 'lunar'>('solar');
+  const [isLeapMonth, setIsLeapMonth] = useState(false);
+  const [dayBoundary, setDayBoundary] = useState<SajuBirthInput['dayBoundary']>('midnight');
+  const [trueSolarTimeEnabled, setTrueSolarTimeEnabled] = useState(false);
+  const [longitude, setLongitude] = useState(126.978);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [formError, setFormError] = useState('');
   const [result, setResult] = useState<ReturnType<typeof calculateSaju> | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'basic' | 'zodiac' | 'tenGods' | 'fortune' | 'career' | 'health' | 'wealth' | 'love' | 'compatibility'>('basic');
+  const [activeTab, setActiveTab] = useState<ResultTabId>('basic');
 
   // 저장 기능
-  const [savedList, setSavedList] = useState<SavedSaju[]>([]);
+  const [savedList, setSavedList] = useState<SavedSajuV2[]>([]);
   const [saveName, setSaveName] = useState('');
   const [showSaveModal, setShowSaveModal] = useState(false);
 
   // 궁합 기능
-  const [showCompatibility, setShowCompatibility] = useState(false);
-  const [partner, setPartner] = useState<{ birthDate: string; birthHour: string; gender: '남' | '여' }>({
+  const [partner, setPartner] = useState<{ birthDate: string; birthTime: string; gender: '남' | '여' }>({
     birthDate: '',
-    birthHour: '12',
+    birthTime: '12:00',
     gender: '여'
   });
   const [compatibilityResult, setCompatibilityResult] = useState<ReturnType<typeof calculateCompatibility> | null>(null);
+  const [compatibilityError, setCompatibilityError] = useState('');
 
   // 저장된 사주 불러오기
   useEffect(() => {
-    const saved = localStorage.getItem('savedSajuList');
-    if (saved) {
-      setSavedList(JSON.parse(saved));
-    }
+    const timer = window.setTimeout(() => {
+      setSavedList(parseSavedSajuList(localStorage.getItem(STORAGE_KEY)));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const getCurrentInput = (): SajuBirthInput => ({
+    birthDate,
+    birthTime: timeUnknown ? null : birthTime,
+    calendar,
+    isLeapMonth: calendar === 'lunar' && isLeapMonth,
+    gender,
+    dayBoundary,
+    trueSolarTimeEnabled,
+    longitude,
+  });
+
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!birthDate) return;
 
-    setIsLoading(true);
-    await new Promise(resolve => setTimeout(resolve, 800));
-
-    const date = new Date(birthDate);
-    const sajuResult = calculateSaju(date, parseInt(birthHour), gender);
-    setResult(sajuResult);
-    setIsLoading(false);
-    setActiveTab('basic');
+    try {
+      setFormError('');
+      setResult(calculateSaju(getCurrentInput()));
+      setActiveTab('basic');
+    } catch (error) {
+      setFormError(error instanceof Error ? error.message : '사주를 계산하지 못했습니다.');
+    }
   };
 
   const handleSave = () => {
     if (!saveName.trim() || !result) return;
 
-    const newSaved: SavedSaju = {
+    const newSaved: SavedSajuV2 = {
+      version: 2,
       id: Date.now().toString(),
       name: saveName.trim(),
-      birthDate,
-      birthHour,
-      gender,
+      input: getCurrentInput(),
       savedAt: new Date().toISOString()
     };
 
     const newList = [...savedList, newSaved];
     setSavedList(newList);
-    localStorage.setItem('savedSajuList', JSON.stringify(newList));
+    localStorage.setItem(STORAGE_KEY, serializeSavedSajuList(newList));
     setSaveName('');
     setShowSaveModal(false);
   };
 
-  const handleLoadSaved = (saved: SavedSaju) => {
-    setBirthDate(saved.birthDate);
-    setBirthHour(saved.birthHour);
-    setGender(saved.gender);
-
-    const date = new Date(saved.birthDate);
-    const sajuResult = calculateSaju(date, parseInt(saved.birthHour), saved.gender);
-    setResult(sajuResult);
+  const handleLoadSaved = (saved: SavedSajuV2) => {
+    const input = saved.input;
+    setBirthDate(input.birthDate);
+    setBirthTime(input.birthTime ?? '12:00');
+    setTimeUnknown(input.birthTime === null);
+    setGender(input.gender);
+    setCalendar(input.calendar);
+    setIsLeapMonth(input.isLeapMonth);
+    setDayBoundary(input.dayBoundary);
+    setTrueSolarTimeEnabled(input.trueSolarTimeEnabled);
+    setLongitude(input.longitude);
+    setResult(calculateSaju(input));
     setActiveTab('basic');
   };
 
   const handleDeleteSaved = (id: string) => {
     const newList = savedList.filter(s => s.id !== id);
     setSavedList(newList);
-    localStorage.setItem('savedSajuList', JSON.stringify(newList));
+    localStorage.setItem(STORAGE_KEY, serializeSavedSajuList(newList));
   };
 
   const handleCompatibility = () => {
     if (!result || !partner.birthDate) return;
 
-    const partnerDate = new Date(partner.birthDate);
-    const partnerSaju = calculateSaju(partnerDate, parseInt(partner.birthHour), partner.gender);
+    try {
+      setCompatibilityError('');
+      const partnerSaju = calculateSaju({
+        ...DEFAULT_BIRTH_INPUT,
+        birthDate: partner.birthDate,
+        birthTime: partner.birthTime,
+        gender: partner.gender,
+      });
 
-    const compatibility = calculateCompatibility(
-      { dayGan: result.dayMaster, yearZhi: result.yearPillar.zhi },
-      { dayGan: partnerSaju.dayMaster, yearZhi: partnerSaju.yearPillar.zhi }
-    );
+      const compatibility = calculateCompatibility(
+        { dayGan: result.dayMaster, yearZhi: result.yearPillar.zhi },
+        { dayGan: partnerSaju.dayMaster, yearZhi: partnerSaju.yearPillar.zhi }
+      );
 
-    setCompatibilityResult(compatibility);
+      setCompatibilityResult(compatibility);
+    } catch (error) {
+      setCompatibilityResult(null);
+      setCompatibilityError(error instanceof Error ? error.message : '궁합을 계산하지 못했습니다.');
+    }
   };
 
   const getElementClass = (element: string) => {
@@ -117,21 +156,6 @@ export default function Home() {
     };
     return classes[element] || '';
   };
-
-  const hourOptions = [
-    { value: '0', label: '자시 (23:30~01:30)' },
-    { value: '2', label: '축시 (01:30~03:30)' },
-    { value: '4', label: '인시 (03:30~05:30)' },
-    { value: '6', label: '묘시 (05:30~07:30)' },
-    { value: '8', label: '진시 (07:30~09:30)' },
-    { value: '10', label: '사시 (09:30~11:30)' },
-    { value: '12', label: '오시 (11:30~13:30)' },
-    { value: '14', label: '미시 (13:30~15:30)' },
-    { value: '16', label: '신시 (15:30~17:30)' },
-    { value: '18', label: '유시 (17:30~19:30)' },
-    { value: '20', label: '술시 (19:30~21:30)' },
-    { value: '22', label: '해시 (21:30~23:30)' },
-  ];
 
   return (
     <>
@@ -146,39 +170,104 @@ export default function Home() {
                 사주팔자
               </h1>
               <p className="text-gray-400 text-sm sm:text-base">
-                당신의 사주를 분석하여 타고난 운명을 알려드립니다
+                절기 기준 사주 원국과 전통 명리 해석을 확인해 보세요
               </p>
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+              <fieldset className="fade-in fade-in-delay-1">
+                <legend className="block text-sm font-medium text-gray-300 mb-2">달력 기준</legend>
+                <div className="grid grid-cols-2 gap-3">
+                  {([
+                    ['solar', '☀️ 양력'],
+                    ['lunar', '🌙 음력'],
+                  ] as const).map(([value, label]) => (
+                    <button
+                      key={value}
+                      type="button"
+                      onClick={() => {
+                        if (calendar !== value) setBirthDate('');
+                        setCalendar(value);
+                        if (value === 'solar') setIsLeapMonth(false);
+                      }}
+                      className={`py-3 rounded-xl border transition-all ${calendar === value
+                          ? 'border-purple-500 bg-purple-500/20 text-white'
+                          : 'border-gray-700 bg-gray-800/50 text-gray-400'
+                        }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
               <div className="fade-in fade-in-delay-1">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="birth-date" className="block text-sm font-medium text-gray-300 mb-2">
                   생년월일
                 </label>
-                <input
-                  type="date"
-                  value={birthDate}
-                  onChange={(e) => setBirthDate(e.target.value)}
-                  className="input-field"
-                  required
-                />
+                {calendar === 'solar' ? (
+                  <input
+                    id="birth-date"
+                    type="date"
+                    value={birthDate}
+                    onChange={(e) => setBirthDate(e.target.value)}
+                    className="input-field"
+                    min="1800-01-01"
+                    max={formatDateInputValue(new Date())}
+                    required
+                  />
+                ) : (
+                  <>
+                    <input
+                      id="birth-date"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}"
+                      placeholder="예: 1992-09-29"
+                      value={birthDate}
+                      onChange={(e) => setBirthDate(e.target.value)}
+                      className="input-field"
+                      maxLength={10}
+                      required
+                    />
+                    <p className="mt-2 text-xs text-gray-500">음력 날짜를 YYYY-MM-DD 형식으로 입력하세요.</p>
+                  </>
+                )}
+                {calendar === 'lunar' && (
+                  <label className="mt-3 flex items-center gap-2 text-sm text-gray-400">
+                    <input
+                      type="checkbox"
+                      checked={isLeapMonth}
+                      onChange={(e) => setIsLeapMonth(e.target.checked)}
+                      className="accent-purple-500"
+                    />
+                    윤달로 입력
+                  </label>
+                )}
               </div>
 
               <div className="fade-in fade-in-delay-2">
-                <label className="block text-sm font-medium text-gray-300 mb-2">
+                <label htmlFor="birth-time" className="block text-sm font-medium text-gray-300 mb-2">
                   태어난 시간
                 </label>
-                <select
-                  value={birthHour}
-                  onChange={(e) => setBirthHour(e.target.value)}
+                <input
+                  id="birth-time"
+                  type="time"
+                  value={birthTime}
+                  onChange={(e) => setBirthTime(e.target.value)}
                   className="input-field"
-                >
-                  {hourOptions.map((option) => (
-                    <option key={option.value} value={option.value} className="bg-gray-900">
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
+                  disabled={timeUnknown}
+                  required={!timeUnknown}
+                />
+                <label className="mt-3 flex items-center gap-2 text-sm text-gray-400">
+                  <input
+                    type="checkbox"
+                    checked={timeUnknown}
+                    onChange={(e) => setTimeUnknown(e.target.checked)}
+                    className="accent-purple-500"
+                  />
+                  출생 시간을 모릅니다
+                </label>
               </div>
 
               <div className="fade-in fade-in-delay-2">
@@ -209,52 +298,81 @@ export default function Home() {
                 </div>
               </div>
 
+              <div className="fade-in fade-in-delay-3">
+                <button
+                  type="button"
+                  onClick={() => setShowAdvanced((value) => !value)}
+                  className="w-full flex items-center justify-between text-sm text-gray-400 hover:text-white"
+                  aria-expanded={showAdvanced}
+                >
+                  <span>고급 계산 설정</span>
+                  <span>{showAdvanced ? '−' : '+'}</span>
+                </button>
+                {showAdvanced && (
+                  <div className="mt-4 space-y-4 rounded-xl border border-gray-700 bg-gray-900/40 p-4">
+                    <div>
+                      <label htmlFor="day-boundary" className="block text-xs text-gray-400 mb-2">23시 자시 관법</label>
+                      <select
+                        id="day-boundary"
+                        value={dayBoundary}
+                        onChange={(e) => setDayBoundary(e.target.value as SajuBirthInput['dayBoundary'])}
+                        className="input-field py-3 text-sm"
+                      >
+                        <option value="midnight" className="bg-gray-900">자정 기준 — 일주는 00시에 변경</option>
+                        <option value="jasi" className="bg-gray-900">야자시 — 23시부터 다음 일주</option>
+                        <option value="splitJasi" className="bg-gray-900">분리 자시 — 시주 천간만 다음날 기준</option>
+                      </select>
+                    </div>
+                    <label className="flex items-center gap-2 text-sm text-gray-300">
+                      <input
+                        type="checkbox"
+                        checked={trueSolarTimeEnabled}
+                        onChange={(e) => setTrueSolarTimeEnabled(e.target.checked)}
+                        className="accent-purple-500"
+                      />
+                      출생지 경도로 진태양시 보정
+                    </label>
+                    {trueSolarTimeEnabled && (
+                      <div>
+                        <label htmlFor="longitude" className="block text-xs text-gray-400 mb-2">출생지 경도 (서울 126.978°)</label>
+                        <input
+                          id="longitude"
+                          type="number"
+                          min="-180"
+                          max="180"
+                          step="0.001"
+                          value={longitude}
+                          onChange={(e) => setLongitude(Number(e.target.value))}
+                          className="input-field py-3 text-sm"
+                        />
+                      </div>
+                    )}
+                    <p className="text-xs leading-relaxed text-gray-500">
+                      관법에 따라 자시와 대운 시작 시점은 다르게 해석될 수 있습니다. 기본값은 한국 표준시와 자정 경계입니다.
+                    </p>
+                  </div>
+                )}
+              </div>
+
+              {formError && (
+                <div role="alert" className="rounded-xl border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-300">
+                  {formError}
+                </div>
+              )}
+
               <button
                 type="submit"
-                disabled={isLoading}
-                className="btn-primary w-full mt-8 fade-in fade-in-delay-3 disabled:opacity-50"
+                className="btn-primary w-full mt-8 fade-in fade-in-delay-3"
               >
-                {isLoading ? (
-                  <span className="flex items-center justify-center gap-2">
-                    <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    분석 중...
-                  </span>
-                ) : (
-                  '사주 보기 ✨'
-                )}
+                사주 보기 ✨
               </button>
             </form>
 
-            {/* 저장된 사주 목록 */}
-            {savedList.length > 0 && (
-              <div className="mt-8 pt-6 border-t border-gray-700">
-                <h3 className="text-sm font-medium text-gray-400 mb-3">📁 저장된 사주</h3>
-                <div className="space-y-2 max-h-40 overflow-y-auto">
-                  {savedList.map((saved) => (
-                    <div key={saved.id} className="flex items-center justify-between p-3 bg-gray-800/50 rounded-lg">
-                      <button
-                        onClick={() => handleLoadSaved(saved)}
-                        className="flex-1 text-left text-sm text-white hover:text-purple-400"
-                      >
-                        {saved.name}
-                        <span className="text-xs text-gray-500 ml-2">
-                          {saved.gender === '남' ? '👨' : '👩'} {saved.birthDate}
-                        </span>
-                      </button>
-                      <button
-                        onClick={() => handleDeleteSaved(saved.id)}
-                        className="text-gray-500 hover:text-red-400 p-1"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            <div className="mt-6">
+              <SafetyNotice />
+            </div>
+
+            <SavedSajuList items={savedList} onLoad={handleLoadSaved} onDelete={handleDeleteSaved} />
           </div>
         ) : (
           // Result Display
@@ -265,11 +383,11 @@ export default function Home() {
                 사주 분석 결과
               </h1>
               <p className="text-gray-400">
-                {new Date(birthDate).toLocaleDateString('ko-KR', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })} 출생 · {gender === '남' ? '남성' : '여성'}
+                {formatKoreanDate(birthDate)} · {calendar === 'lunar' ? '음력' : '양력'} · {gender === '남' ? '남성' : '여성'}
+              </p>
+              <p className="mt-2 text-xs text-gray-500">
+                {result.calculationMetadata.convention}
+                {!result.calculationMetadata.timeKnown && ' · 출생시간 미상으로 정오 기준 시주'}
               </p>
               {/* 저장 버튼 */}
               <button
@@ -280,32 +398,7 @@ export default function Home() {
               </button>
             </div>
 
-            {/* Tab Navigation */}
-            <div className="flex gap-2 overflow-x-auto pb-2 fade-in">
-              {[
-                { id: 'basic', label: '사주팔자', icon: '☯️' },
-                { id: 'zodiac', label: '띠 분석', icon: '🐲' },
-                { id: 'tenGods', label: '십신', icon: '⭐' },
-                { id: 'fortune', label: '운세', icon: '🔮' },
-                { id: 'career', label: '직업', icon: '💼' },
-                { id: 'health', label: '건강', icon: '🏥' },
-                { id: 'wealth', label: '재물', icon: '💰' },
-                { id: 'love', label: '연애', icon: '💕' },
-                { id: 'compatibility', label: '궁합', icon: '💑' },
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as typeof activeTab)}
-                  className={`flex items-center gap-2 px-4 py-2.5 rounded-xl whitespace-nowrap transition-all text-sm ${activeTab === tab.id
-                      ? 'bg-gradient-to-r from-purple-500/30 to-pink-500/30 border border-purple-500/50 text-white'
-                      : 'bg-gray-800/50 border border-gray-700 text-gray-400 hover:text-white hover:border-gray-600'
-                    }`}
-                >
-                  <span>{tab.icon}</span>
-                  {tab.label}
-                </button>
-              ))}
-            </div>
+            <ResultTabs activeTab={activeTab} onChange={setActiveTab} />
 
             {/* Tab Content */}
             {activeTab === 'basic' && (
@@ -362,8 +455,11 @@ export default function Home() {
                 <div className="glass-card p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
                     <span className="text-2xl">☯️</span>
-                    오행 분포
+                    8글자 기준 오행 분포
                   </h2>
+                  <p className="mb-5 text-xs leading-relaxed text-gray-500">
+                    천간과 지지의 대표 오행을 같은 비중으로 센 참고 지표입니다. 월령·지장간 가중 분석과는 구분됩니다.
+                  </p>
                   <div className="space-y-4">
                     {Object.entries(result.elementCount).map(([element, count]) => {
                       const info = FIVE_ELEMENTS[element as keyof typeof FIVE_ELEMENTS];
@@ -495,6 +591,12 @@ export default function Home() {
                     <span className="text-2xl">🌊</span>
                     대운 (10년 주기)
                   </h2>
+                  <p className="mb-5 text-sm text-gray-400">
+                    {result.luckPillarInfo.forward ? '순행' : '역행'} · 첫 대운 약 {result.luckPillarInfo.startAge}세
+                    <span className="ml-2 text-xs text-gray-500">
+                      ({result.luckPillarInfo.startYears}년 {result.luckPillarInfo.startMonths}개월 {result.luckPillarInfo.startDays}일 환산)
+                    </span>
+                  </p>
                   <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
                     {result.daeun.map((d, i) => (
                       <div
@@ -552,19 +654,22 @@ export default function Home() {
                 <div className="glass-card p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
                     <span className="text-2xl">🏥</span>
-                    건강 운세
+                    건강 성찰 가이드
                   </h2>
+                  <p className="mb-4 rounded-lg border border-amber-500/20 bg-amber-500/10 p-3 text-xs leading-relaxed text-amber-200/80">
+                    오행 상징을 생활 습관에 비유한 콘텐츠이며 의학적 진단이나 치료 조언이 아닙니다.
+                  </p>
                   <p className="text-gray-300 mb-6">{result.healthFortune.overall}</p>
                   <div className="grid sm:grid-cols-2 gap-4">
                     <div className="p-4 rounded-xl bg-red-500/10 border border-red-500/20">
-                      <div className="text-sm text-red-400 mb-2">⚠️ 주의할 장기</div>
+                      <div className="text-sm text-red-400 mb-2">⚠️ 생활 습관을 살필 영역</div>
                       <p className="text-gray-300">{result.healthFortune.weakOrgans.join(', ')}</p>
                       <div className="mt-2 text-xs text-gray-500">
                         {result.healthFortune.advice.join(' / ')}
                       </div>
                     </div>
                     <div className="p-4 rounded-xl bg-green-500/10 border border-green-500/20">
-                      <div className="text-sm text-green-400 mb-2">💪 튼튼한 장기</div>
+                      <div className="text-sm text-green-400 mb-2">💪 상징적으로 강조된 영역</div>
                       <p className="text-gray-300">{result.healthFortune.strongOrgans.join(', ')}</p>
                     </div>
                     <div className="p-4 rounded-xl bg-cyan-500/10 border border-cyan-500/20">
@@ -624,8 +729,9 @@ export default function Home() {
                     )}
                   </div>
                   <div className="mt-6 p-4 rounded-xl bg-yellow-500/10 border border-yellow-500/20">
-                    <div className="text-sm text-yellow-400 mb-2">💡 재테크 조언</div>
+                    <div className="text-sm text-yellow-400 mb-2">💡 금전 습관 참고</div>
                     <p className="text-gray-300">{result.wealthFortune.advice}</p>
+                    <p className="mt-2 text-xs text-gray-500">개인 맞춤 금융 조언이 아니며 투자 판단은 별도의 전문 정보로 검토하세요.</p>
                   </div>
                 </div>
               </div>
@@ -690,8 +796,11 @@ export default function Home() {
                 <div className="glass-card p-6 sm:p-8">
                   <h2 className="text-xl font-semibold mb-6 flex items-center gap-2">
                     <span className="text-2xl">💑</span>
-                    궁합 보기
+                    궁합 참고 지표
                   </h2>
+                  <p className="mb-5 text-xs leading-relaxed text-gray-500">
+                    일간 오행·음양과 띠 관계를 단순 점수화한 콘텐츠로, 실제 관계의 가치나 미래를 판정하지 않습니다.
+                  </p>
 
                   {/* Partner Input */}
                   <div className="p-4 rounded-xl bg-gray-800/50 border border-gray-700 mb-6">
@@ -703,22 +812,20 @@ export default function Home() {
                           type="date"
                           value={partner.birthDate}
                           onChange={(e) => setPartner({ ...partner, birthDate: e.target.value })}
+                          min="1800-01-01"
+                          max={formatDateInputValue(new Date())}
                           className="input-field text-sm py-2"
                         />
                       </div>
                       <div>
-                        <label className="block text-xs text-gray-500 mb-1">시간</label>
-                        <select
-                          value={partner.birthHour}
-                          onChange={(e) => setPartner({ ...partner, birthHour: e.target.value })}
+                        <label htmlFor="partner-time" className="block text-xs text-gray-500 mb-1">시간</label>
+                        <input
+                          id="partner-time"
+                          type="time"
+                          value={partner.birthTime}
+                          onChange={(e) => setPartner({ ...partner, birthTime: e.target.value })}
                           className="input-field text-sm py-2"
-                        >
-                          {hourOptions.map((opt) => (
-                            <option key={opt.value} value={opt.value} className="bg-gray-900">
-                              {opt.label}
-                            </option>
-                          ))}
-                        </select>
+                        />
                       </div>
                       <div>
                         <label className="block text-xs text-gray-500 mb-1">성별</label>
@@ -753,6 +860,9 @@ export default function Home() {
                     >
                       궁합 확인 💕
                     </button>
+                    {compatibilityError && (
+                      <p role="alert" className="mt-3 text-sm text-red-300">{compatibilityError}</p>
+                    )}
                   </div>
 
                   {/* Result */}
@@ -799,8 +909,8 @@ export default function Home() {
         {/* Save Modal */}
         {showSaveModal && (
           <div className="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-            <div className="glass-card p-6 max-w-md w-full">
-              <h3 className="text-xl font-bold mb-4">💾 사주 저장하기</h3>
+            <div role="dialog" aria-modal="true" aria-labelledby="save-dialog-title" className="glass-card p-6 max-w-md w-full">
+              <h3 id="save-dialog-title" className="text-xl font-bold mb-4">💾 사주 저장하기</h3>
               <input
                 type="text"
                 value={saveName}

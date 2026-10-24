@@ -1,4 +1,10 @@
-// 사주 (Four Pillars of Destiny) Calculation Library - Enhanced Version
+// 사주 (Four Pillars of Destiny) interpretation and presentation library.
+// Calendar math is delegated to the tested manseryeok adapter.
+
+import { calculateSajuChart } from './saju/engine';
+import type { SajuBirthInput, SajuPillarValue } from './saju/types';
+
+export type { SajuBirthInput } from './saju/types';
 
 // ==================== 기본 데이터 ====================
 
@@ -616,7 +622,7 @@ export function calculateDaeun(birthYear: number, birthMonth: number, gender: '�
     }> = [];
 
     const monthPillar = getMonthPillar(birthYear, birthMonth);
-    let baseIndex = CHEONGAN.findIndex(g => g.name === monthPillar.gan.name) +
+    const baseIndex = CHEONGAN.findIndex(g => g.name === monthPillar.gan.name) +
         JIJI.findIndex(z => z.name === monthPillar.zhi.name) * 10;
 
     for (let i = 0; i < 10; i++) {
@@ -730,8 +736,6 @@ export function calculateCompatibility(
 
     // 띠 궁합
     const zodiac1 = ZODIAC_DETAILS[person1.yearZhi.animal];
-    const zodiac2 = ZODIAC_DETAILS[person2.yearZhi.animal];
-
     if (zodiac1.compatible.includes(person2.yearZhi.animal)) {
         score += 15;
         analysis.push(`💕 ${person1.yearZhi.animal}띠와 ${person2.yearZhi.animal}띠는 좋은 궁합입니다.`);
@@ -864,31 +868,31 @@ export function analyzeHealth(dayGan: typeof CHEONGAN[number], elementCount: Rec
     const elementHealth: Record<string, { organ: string; weak: string[]; food: string[]; exercise: string[] }> = {
         '목': {
             organ: '간, 담, 눈, 근육',
-            weak: ['간 기능 저하', '근육 경직', '눈 피로'],
+            weak: ['화면 사용 후 눈 쉬기', '규칙적으로 스트레칭하기', '과로 후 충분히 쉬기'],
             food: ['녹색 채소', '신맛 과일', '씀바귀'],
             exercise: ['스트레칭', '요가', '등산']
         },
         '화': {
             organ: '심장, 소장, 혀',
-            weak: ['심장 질환', '혈압 이상', '불면증'],
+            weak: ['무리한 활동 피하기', '수면 리듬 살피기', '흥분 후 호흡 가다듬기'],
             food: ['붉은 과일', '토마토', '석류'],
             exercise: ['유산소', '수영', '명상']
         },
         '토': {
             organ: '비장, 위장, 입',
-            weak: ['소화 장애', '당뇨', '비만'],
+            weak: ['규칙적으로 식사하기', '천천히 먹기', '가벼운 걷기 습관 만들기'],
             food: ['노란 음식', '고구마', '호박'],
             exercise: ['걷기', '골프', '태극권']
         },
         '금': {
             organ: '폐, 대장, 코, 피부',
-            weak: ['호흡기 질환', '피부병', '알레르기'],
+            weak: ['실내 환기하기', '건조한 환경 살피기', '편안한 호흡 연습하기'],
             food: ['흰색 음식', '배', '무'],
             exercise: ['호흡법', '에어로빅', '수영']
         },
         '수': {
             organ: '신장, 방광, 귀, 뼈',
-            weak: ['신장 기능', '관절염', '청력 저하'],
+            weak: ['적절히 수분 섭취하기', '관절에 무리 주지 않기', '오래 앉아 있지 않기'],
             food: ['검은 음식', '검은콩', '미역'],
             exercise: ['수영', '아쿠아로빅', '걷기']
         }
@@ -908,15 +912,13 @@ export function analyzeHealth(dayGan: typeof CHEONGAN[number], elementCount: Rec
     healthInfo.foodRecommend = weakHealth.food;
     healthInfo.exerciseRecommend = weakHealth.exercise;
 
-    // 일간 기반 전반적 건강
-    const dayMasterHealth = getDayMasterInterpretation(dayGan).health;
-    healthInfo.overall = dayMasterHealth;
+    healthInfo.overall = `${dayGan.name}(${dayGan.hanja}) 일간과 오행의 전통적 신체 상징을 생활 습관 점검 항목으로 풀었습니다.`;
 
     return healthInfo;
 }
 
 // 재물 운세 분석
-export function analyzeWealth(tenGods: Record<string, TenGodType>, elementCount: Record<string, number>) {
+export function analyzeWealth(tenGods: Record<string, TenGodType>) {
     const wealthInfo: {
         score: number;
         type: string;
@@ -975,8 +977,8 @@ export function analyzeWealth(tenGods: Record<string, TenGodType>, elementCount:
     // 추천 사업
     wealthInfo.luckyBusiness = ['온라인 비즈니스', '프랜차이즈', '부동산', '주식 장기투자'];
     wealthInfo.advice = wealthInfo.score >= 70
-        ? '재물운이 좋으니 적극적인 재테크를 추천합니다.'
-        : '안정적인 저축과 보수적인 투자를 권합니다.';
+        ? '기회를 볼 때도 비상자금, 손실 가능성, 장기 목표를 함께 점검하세요.'
+        : '수입과 지출을 기록하고 감당 가능한 범위에서 재무 목표를 세워보세요.';
 
     return wealthInfo;
 }
@@ -1076,16 +1078,21 @@ export function analyzeLove(dayGan: typeof CHEONGAN[number], tenGods: Record<str
 }
 
 // 전체 사주 계산 (확장)
-export function calculateSaju(birthDate: Date, birthHour: number, gender: '남' | '여' = '남') {
-    const year = birthDate.getFullYear();
-    const month = birthDate.getMonth() + 1;
-    const day = birthDate.getDate();
+export function calculateSaju(input: SajuBirthInput) {
+    const chart = calculateSajuChart(input);
+    const toDisplayPillar = (pillar: SajuPillarValue) => {
+        const gan = CHEONGAN.find((item) => item.name === pillar.stem);
+        const zhi = JIJI.find((item) => item.name === pillar.branch);
+        if (!gan || !zhi) {
+            throw new Error(`표시할 수 없는 간지입니다: ${pillar.korean}`);
+        }
+        return { gan, zhi };
+    };
 
-    const yearPillar = getYearPillar(year);
-    const monthPillar = getMonthPillar(year, month);
-    const dayPillar = getDayPillar(year, month, day);
-    const dayGanIndex = CHEONGAN.findIndex(g => g.name === dayPillar.gan.name);
-    const hourPillar = getHourPillar(dayGanIndex, birthHour);
+    const yearPillar = toDisplayPillar(chart.pillars.year);
+    const monthPillar = toDisplayPillar(chart.pillars.month);
+    const dayPillar = toDisplayPillar(chart.pillars.day);
+    const hourPillar = toDisplayPillar(chart.pillars.hour);
 
     const pillars = [yearPillar, monthPillar, dayPillar, hourPillar];
     const elementCount = analyzeElements(pillars);
@@ -1094,17 +1101,22 @@ export function calculateSaju(birthDate: Date, birthHour: number, gender: '남' 
 
     // 십신 배열
     const tenGods = {
-        year: calculateTenGod(dayPillar.gan, yearPillar.gan),
-        month: calculateTenGod(dayPillar.gan, monthPillar.gan),
+        year: chart.tenGods.year.stem,
+        month: chart.tenGods.month.stem,
         day: '비견' as TenGodType, // 일간 자체
-        hour: calculateTenGod(dayPillar.gan, hourPillar.gan),
+        hour: chart.tenGods.hour.stem,
     };
 
     // 띠 정보
     const zodiac = ZODIAC_DETAILS[yearPillar.zhi.animal];
 
     // 대운
-    const daeun = calculateDaeun(year, month, gender);
+    const daeun = chart.luckPillars.pillars.map(({ age, pillar }) => ({
+        age,
+        pillar: toDisplayPillar(pillar),
+        startYear: chart.input.year + age,
+        endYear: chart.input.year + age + 9,
+    }));
 
     // 올해 운세
     const currentYear = new Date().getFullYear();
@@ -1116,8 +1128,8 @@ export function calculateSaju(birthDate: Date, birthHour: number, gender: '남' 
     // Phase 3: 상세 분석
     const careerAptitude = analyzeCareerAptitude(dayPillar.gan, tenGods, elementCount);
     const healthFortune = analyzeHealth(dayPillar.gan, elementCount);
-    const wealthFortune = analyzeWealth(tenGods, elementCount);
-    const loveFortune = analyzeLove(dayPillar.gan, tenGods, gender, yearPillar.zhi.animal);
+    const wealthFortune = analyzeWealth(tenGods);
+    const loveFortune = analyzeLove(dayPillar.gan, tenGods, input.gender, yearPillar.zhi.animal);
 
     return {
         // 기본 사주
@@ -1141,6 +1153,13 @@ export function calculateSaju(birthDate: Date, birthHour: number, gender: '남' 
 
         // 운세
         daeun,
+        luckPillarInfo: {
+            forward: chart.luckPillars.forward,
+            startAge: chart.luckPillars.startAge,
+            startYears: chart.luckPillars.startYears,
+            startMonths: chart.luckPillars.startMonths,
+            startDays: chart.luckPillars.startDays,
+        },
         yearlyFortune,
         todayFortune,
 
@@ -1151,8 +1170,10 @@ export function calculateSaju(birthDate: Date, birthHour: number, gender: '남' 
         loveFortune,
 
         // 메타 정보
-        gender,
-        birthInfo: { year, month, day, hour: birthHour }
+        gender: input.gender,
+        birthInfo: chart.input,
+        calculationMetadata: chart.metadata,
+        voidBranches: chart.voidBranches,
     };
 }
 
